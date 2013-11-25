@@ -29,7 +29,8 @@
 #define NSLogError(frmt, ...)    do{ if(LOG_LEVEL >= 1) NSLog((frmt), ##__VA_ARGS__); } while(0)
 #define NSLogWarn(frmt, ...)     do{ if(LOG_LEVEL >= 2) NSLog((frmt), ##__VA_ARGS__); } while(0)
 #define NSLogInfo(frmt, ...)     do{ if(LOG_LEVEL >= 3) NSLog((frmt), ##__VA_ARGS__); } while(0)
-#define NSLogVerbose(frmt, ...)  do{ if(LOG_LEVEL >= 4) NSLog((frmt), ##__VA_ARGS__); } while(0)
+#define NSLogDebug(frmt, ...)    do{ if(LOG_LEVEL >= 4) NSLog((frmt), ##__VA_ARGS__); } while(0)
+#define NSLogVerbose(frmt, ...)  do{ if(LOG_LEVEL >= 5) NSLog((frmt), ##__VA_ARGS__); } while(0)
 
 // Xcode does NOT natively support colors in the Xcode debugging console.
 // You'll need to install the XcodeColors plugin to see colors in the Xcode console.
@@ -115,7 +116,7 @@
 	size_t resetCodeLen;
 }
 
-- (id)initWithForegroundColor:(OSColor *)fgColor backgroundColor:(OSColor *)bgColor flag:(int)mask context:(int)ctxt;
+- (instancetype)initWithForegroundColor:(OSColor *)fgColor backgroundColor:(OSColor *)bgColor flag:(int)mask context:(int)ctxt;
 
 @end
 
@@ -688,7 +689,7 @@ static DDTTYLogger *sharedInstance;
 		CGColorSpaceRef rgbColorSpace = CGColorSpaceCreateDeviceRGB();
 		
 		unsigned char pixel[4];
-		CGContextRef context = CGBitmapContextCreate(&pixel, 1, 1, 8, 4, rgbColorSpace, (CGBitmapInfo)kCGImageAlphaNoneSkipLast);
+		CGContextRef context = CGBitmapContextCreate(&pixel, 1, 1, 8, 4, rgbColorSpace, kCGBitmapAlphaInfoMask & kCGImageAlphaNoneSkipLast);
 		
 		CGContextSetFillColorWithColor(context, [color CGColor]);
 		CGContextFillRect(context, CGRectMake(0, 0, 1, 1));
@@ -806,11 +807,11 @@ static DDTTYLogger *sharedInstance;
 		NSLogInfo(@"DDTTYLogger: isaColor256TTY: %@", (isaColor256TTY ? @"YES" : @"NO"));
 		NSLogInfo(@"DDTTYLogger: isaXcodeColorTTY: %@", (isaXcodeColorTTY ? @"YES" : @"NO"));
 		
-		sharedInstance = [[DDTTYLogger alloc] init];
+		sharedInstance = [[[self class] alloc] init];
 	}
 }
 
-+ (DDTTYLogger *)sharedInstance
++ (instancetype)sharedInstance
 {
 	return sharedInstance;
 }
@@ -931,7 +932,7 @@ static DDTTYLogger *sharedInstance;
 
 - (void)setForegroundColor:(OSColor *)txtColor backgroundColor:(OSColor *)bgColor forFlag:(int)mask
 {
-	[self setForegroundColor:txtColor backgroundColor:bgColor forFlag:mask context:0];
+	[self setForegroundColor:txtColor backgroundColor:bgColor forFlag:mask context:LOG_CONTEXT_ALL];
 }
 
 - (void)setForegroundColor:(OSColor *)txtColor backgroundColor:(OSColor *)bgColor forFlag:(int)mask context:(int)ctxt
@@ -1190,10 +1191,24 @@ static DDTTYLogger *sharedInstance;
 			{
 				for (DDTTYLoggerColorProfile *cp in colorProfilesArray)
 				{
-					if ((logMessage->logFlag & cp->mask) && (logMessage->logContext == cp->context))
+					if (logMessage->logFlag & cp->mask)
 					{
-						colorProfile = cp;
-						break;
+                        // Color profile set for this context?
+                        if (logMessage->logContext == cp->context)
+                        {
+                            colorProfile = cp;
+                            
+                            // Stop searching
+                            break;
+                        }
+						
+                        // Check if LOG_CONTEXT_ALL was specified as a default color for this flag
+                        if (cp->context == LOG_CONTEXT_ALL)
+                        {
+                            colorProfile = cp;
+                            
+                            // We don't break to keep searching for more specific color profiles for the context
+                        }
 					}
 				}
 			}
@@ -1372,7 +1387,7 @@ static DDTTYLogger *sharedInstance;
 
 @implementation DDTTYLoggerColorProfile
 
-- (id)initWithForegroundColor:(OSColor *)fgColor backgroundColor:(OSColor *)bgColor flag:(int)aMask context:(int)ctxt
+- (instancetype)initWithForegroundColor:(OSColor *)fgColor backgroundColor:(OSColor *)bgColor flag:(int)aMask context:(int)ctxt
 {
 	if ((self = [super init]))
 	{
